@@ -1,0 +1,127 @@
+`timescale 1ns/1ps
+
+module tb;
+
+    logic ACLK;
+    logic ARESETN;
+
+    logic [3:0] AWADDR;
+    logic AWVALID;
+    logic AWREADY;
+
+    logic [31:0] WDATA;
+    logic [3:0]  WSTRB;
+    logic WVALID;
+    logic WREADY;
+
+    logic [1:0] BRESP;
+    logic BVALID;
+    logic BREADY;
+
+    logic [3:0] ARADDR;
+    logic ARVALID;
+    logic ARREADY;
+
+    logic [31:0] RDATA;
+    logic [1:0] RRESP;
+    logic RVALID;
+    logic RREADY;
+
+    axi_lite_slave dut (.*);
+
+    // Clock
+    always #5 ACLK = ~ACLK;
+
+    // ---------------- WRITE ----------------
+    task axi_write(input [3:0] addr, input [31:0] data);
+        begin
+            @(posedge ACLK);
+
+            AWADDR  <= addr;
+            AWVALID <= 1;
+            WDATA   <= data;
+            WVALID  <= 1;
+            WSTRB   <= 4'hF;
+
+            while (!(AWREADY && WREADY))
+                @(posedge ACLK);
+
+            @(posedge ACLK);
+            AWVALID <= 0;
+            WVALID  <= 0;
+
+            // Keep data stable (no reset to 0)
+
+            BREADY <= 1;
+            while (!BVALID)
+                @(posedge ACLK);
+
+            @(posedge ACLK);
+            BREADY <= 0;
+        end
+    endtask
+
+    // ---------------- READ ----------------
+    task axi_read(input [3:0] addr);
+        begin
+            @(posedge ACLK);
+
+            ARADDR  <= addr;
+            ARVALID <= 1;
+
+            while (!ARREADY)
+                @(posedge ACLK);
+
+            @(posedge ACLK);
+            ARVALID <= 0;
+
+            RREADY <= 1;
+            while (!RVALID)
+                @(posedge ACLK);
+
+            $display("READ ADDR=%0h DATA=%0h", addr, RDATA);
+
+            @(posedge ACLK);
+            RREADY <= 0;
+        end
+    endtask
+
+    // ---------------- TEST ----------------
+    initial begin
+        ACLK = 0;
+
+        // Clean initialization (NO X)
+        ARESETN = 0;
+        AWADDR = 0; AWVALID = 0;
+        WDATA = 0; WVALID = 0; WSTRB = 4'hF;
+        BREADY = 0;
+        ARADDR = 0; ARVALID = 0;
+        RREADY = 0;
+
+        #20;
+        ARESETN = 1;
+
+        #20;
+
+        axi_write(4'h0, 32'hAABBCCDD);
+        #30;
+
+        axi_write(4'h4, 32'h11223344);
+        #30;
+
+        axi_read(4'h0);
+        #30;
+
+        axi_read(4'h4);
+
+        #50;
+        $finish;
+    end
+
+    // Dump
+    initial begin
+        $dumpfile("dump.vcd");
+        $dumpvars(0, tb);
+    end
+
+endmodule
